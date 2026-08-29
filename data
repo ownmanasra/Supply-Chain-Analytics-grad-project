@@ -1,1 +1,99 @@
+"""
+Supply Chain Analytics — Data Generation
+==========================================
+Generates a synthetic supply chain dataset simulating order details,
+product categories, supplier information, stock levels, lead times,
+and delivery statuses, as described in Section 7.2 of the project report.
+"""
 
+import pandas as pd
+import numpy as np
+from datetime import datetime, timedelta
+
+RANDOM_SEED = 42
+
+
+def generate_supply_chain_data(n_records: int = 5000) -> pd.DataFrame:
+    """Generate a synthetic supply chain dataset.
+
+    Parameters
+    ----------
+    n_records : int
+        Number of order records to simulate.
+
+    Returns
+    -------
+    pd.DataFrame
+        Synthetic supply chain dataset with 15+ columns covering order
+        details, supplier information, inventory metrics, and logistics
+        parameters.
+    """
+    np.random.seed(RANDOM_SEED)
+
+    categories = ["Electronics", "Fashion", "Home & Kitchen", "Automotive", "Health"]
+    suppliers = ["Supplier A", "Supplier B", "Supplier C", "Supplier D", "Supplier E"]
+    warehouses = ["East", "West", "Central", "South", "North"]
+
+    data = {
+        "OrderID": range(1001, 1001 + n_records),
+        "OrderDate": [
+            datetime(2023, 1, 1) + timedelta(days=np.random.randint(0, 365))
+            for _ in range(n_records)
+        ],
+        "ProductCategory": np.random.choice(categories, n_records),
+        "Quantity": np.random.randint(1, 20, n_records),
+        "UnitPrice": np.random.uniform(10, 500, n_records),
+        "Supplier": np.random.choice(suppliers, n_records),
+        "WarehouseLocation": np.random.choice(warehouses, n_records),
+        "CustomerCityTier": np.random.choice(
+            ["Tier 1", "Tier 2", "Tier 3"], n_records, p=[0.6, 0.3, 0.1]
+        ),
+    }
+
+    df = pd.DataFrame(data)
+    df["TotalRevenue"] = df["Quantity"] * df["UnitPrice"]
+
+    # LeadTime varies by warehouse location (West adds handling delay)
+    df["LeadTime"] = np.random.randint(2, 15, n_records)
+    df.loc[df["WarehouseLocation"] == "West", "LeadTime"] += 2
+
+    # Stock levels, reorder points, and safety stock
+    df["StockLevel"] = np.random.randint(10, 1000, n_records)
+    df["ReorderPoint"] = df["StockLevel"].apply(
+        lambda x: max(10, int(x * 0.4 + np.random.randint(-20, 20)))
+    )
+    df["SafetyStock"] = np.random.randint(20, 100, n_records)
+
+    # Shipping cost — loosely tied to lead time to create a realistic trade-off
+    df["ShippingCost"] = (
+        df["LeadTime"] * np.random.uniform(3, 8, n_records)
+        + np.random.uniform(5, 50, n_records)
+    ).round(2)
+
+    df["CustomerRating"] = np.random.randint(1, 6, n_records)
+
+    # Delivery status: probability of delay increases with LeadTime;
+    # a small, mostly independent probability of cancellation is added.
+    delay_prob = df["LeadTime"] / 20.0
+    cancel_prob = 0.05
+
+    statuses = []
+    for p_delay in delay_prob:
+        roll = np.random.random()
+        if roll < cancel_prob:
+            statuses.append("Cancelled")
+        elif roll < cancel_prob + p_delay:
+            statuses.append("Delayed")
+        else:
+            statuses.append("On Time")
+    df["DeliveryStatus"] = statuses
+
+    df["IsStockout"] = (df["StockLevel"] <= df["ReorderPoint"]).astype(int)
+
+    return df
+
+
+if __name__ == "__main__":
+    df = generate_supply_chain_data()
+    df.to_csv("data/supply_chain_data.csv", index=False)
+    print(f"Data generation complete. {len(df)} records written to data/supply_chain_data.csv")
