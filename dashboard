@@ -1,0 +1,118 @@
+Supply Chain Analytics — BI Dashboard Generation
+===================================================
+Generates static, dark-themed dashboard mockups (Section 12 of the
+report): an executive overview, logistics/delivery performance, and
+inventory/stockout analysis. These are matplotlib-based visual
+prototypes; a production deployment would use Power BI, Tableau, or
+a similar BI tool connected to a live data warehouse.
+"""
+
+import os
+import pandas as pd
+import matplotlib.pyplot as plt
+
+DARK_BG = "#0b0c10"
+ACCENT = "#66fcf1"
+ACCENT_2 = "#45a29e"
+
+
+def _apply_dark_theme():
+    plt.style.use("dark_background")
+    plt.rcParams["figure.facecolor"] = DARK_BG
+    plt.rcParams["axes.facecolor"] = DARK_BG
+    plt.rcParams["text.color"] = ACCENT
+    plt.rcParams["axes.labelcolor"] = ACCENT
+    plt.rcParams["xtick.color"] = ACCENT
+    plt.rcParams["ytick.color"] = ACCENT
+
+
+def create_executive_dashboard(df: pd.DataFrame, output_dir: str = "outputs") -> None:
+    """Executive Overview Dashboard: total orders, revenue trend, top categories."""
+    _apply_dark_theme()
+    os.makedirs(output_dir, exist_ok=True)
+
+    fig = plt.figure(figsize=(16, 10))
+    gs = fig.add_gridspec(2, 3)
+
+    ax1 = fig.add_subplot(gs[0, 0])
+    ax1.axis("off")
+    ax1.text(0.5, 0.6, "Total Orders", ha="center", va="center", fontsize=16, color=ACCENT)
+    ax1.text(0.5, 0.35, f"{len(df):,}", ha="center", va="center", fontsize=30, color=ACCENT, fontweight="bold")
+
+    ax1b = fig.add_subplot(gs[1, 0])
+    ax1b.axis("off")
+    ax1b.text(0.5, 0.6, "Total Revenue", ha="center", va="center", fontsize=16, color=ACCENT)
+    ax1b.text(0.5, 0.35, f"${df['TotalRevenue'].sum():,.0f}", ha="center", va="center", fontsize=26, color=ACCENT, fontweight="bold")
+
+    ax2 = fig.add_subplot(gs[0, 1])
+    df.groupby("ProductCategory")["Quantity"].sum().sort_values(ascending=False).plot(
+        kind="bar", ax=ax2, color=ACCENT_2
+    )
+    ax2.set_title("Orders by Category")
+    ax2.tick_params(axis="x", rotation=45)
+
+    ax2b = fig.add_subplot(gs[1, 1])
+    df["DeliveryStatus"].value_counts().plot(kind="bar", ax=ax2b, color=ACCENT)
+    ax2b.set_title("Delivery Status Breakdown")
+
+    ax3 = fig.add_subplot(gs[:, 2])
+    monthly_revenue = df.set_index("OrderDate").resample("ME")["TotalRevenue"].sum()
+    monthly_revenue.plot(ax=ax3, color=ACCENT)
+    ax3.set_title("Monthly Revenue Trend")
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, "executive_dashboard.png"), bbox_inches="tight")
+    plt.close()
+
+
+def create_logistics_dashboard(df: pd.DataFrame, output_dir: str = "outputs") -> None:
+    """Logistics and Delivery Performance Dashboard."""
+    _apply_dark_theme()
+    os.makedirs(output_dir, exist_ok=True)
+
+    daily = df.set_index("OrderDate").resample("D")["DeliveryStatus"].apply(
+        lambda s: (s == "On Time").mean() * 100 if len(s) else None
+    )
+
+    fig, axes = plt.subplots(2, 1, figsize=(14, 10), gridspec_kw={"height_ratios": [1, 1]})
+
+    axes[0].plot(daily.index, daily.values, color=ACCENT)
+    axes[0].axhline(daily.mean(), color="red", linestyle="--", label="Average")
+    axes[0].set_title("Daily On-Time Delivery Rate (%)")
+    axes[0].legend()
+
+    df["DeliveryStatus"].value_counts().plot(kind="bar", ax=axes[1], color=ACCENT_2)
+    axes[1].set_title("Delivery Status Breakdown")
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, "logistics_dashboard.png"), bbox_inches="tight")
+    plt.close()
+
+
+def create_inventory_dashboard(df: pd.DataFrame, output_dir: str = "outputs") -> None:
+    """Inventory and Stockout Analysis Dashboard."""
+    _apply_dark_theme()
+    os.makedirs(output_dir, exist_ok=True)
+
+    monthly_stockouts = df.set_index("OrderDate").resample("ME")["IsStockout"].sum()
+
+    fig, ax = plt.subplots(figsize=(12, 6))
+    monthly_stockouts.plot(kind="bar", ax=ax, color="#8b0000")
+    ax.set_title("Monthly Stockout Events")
+    ax.set_xticklabels([d.strftime("%b") for d in monthly_stockouts.index], rotation=0)
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, "inventory_dashboard.png"), bbox_inches="tight")
+    plt.close()
+
+
+def create_all_dashboards(df: pd.DataFrame, output_dir: str = "outputs") -> None:
+    create_executive_dashboard(df, output_dir)
+    create_logistics_dashboard(df, output_dir)
+    create_inventory_dashboard(df, output_dir)
+    print(f"Dashboards saved to '{output_dir}/'.")
+
+
+if __name__ == "__main__":
+    df = pd.read_csv("data/supply_chain_data.csv", parse_dates=["OrderDate"])
+    create_all_dashboards(df)
